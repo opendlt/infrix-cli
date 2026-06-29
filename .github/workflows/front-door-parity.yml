@@ -1,0 +1,74 @@
+# Front-door parity (ADOPTION-03 Phase 5).
+#
+# Lives in the PUBLIC repo opendlt/infrix-cli. Runs the DOCUMENTED first
+# commands on clean runners so the front door can never silently break again.
+# Scheduled daily + on every release.
+name: front-door-parity
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  release:
+    types: [published]
+  workflow_dispatch: {}
+
+jobs:
+  installer:
+    name: install + version + doctor (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install via the documented one-liner (unix)
+        if: runner.os != 'Windows'
+        run: sh ./install.sh
+      - name: Install via the documented one-liner (windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./install.ps1
+      - name: infrix version + doctor
+        shell: bash
+        run: |
+          export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"
+          infrix version
+          infrix doctor || true   # doctor may flag a missing node until ADOPTION-01 is live
+
+  npx-wrapper:
+    name: npx @infrix/cli (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: npx launcher downloads + runs the pinned binary
+        run: npx --yes @infrix/cli version
+
+  zero-install-verify:
+    name: zero-install @infrix/verify still passes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: verify a real proof offline
+        run: |
+          mkdir t && cd t && npm init -y >/dev/null && npm install @infrix/verify >/dev/null
+          cat > v.mjs <<'EOF'
+          import { verifyPortablePackage } from '@infrix/verify';
+          import { createRequire } from 'node:module';
+          const proof = createRequire(import.meta.url)('@infrix/verify/portable-fixture.valid.json');
+          const r = await verifyPortablePackage(proof);
+          if (!r.passed) { console.error('FAILED'); process.exit(1); }
+          console.log('offline verify passed:', r.checks.length, 'checks');
+          EOF
+          node v.mjs
+
+  # TODO (after ADOPTION-01 node is live): submit a sandbox intent against
+  # https://devnet.infrix.io and assert a verifiable proof comes back.

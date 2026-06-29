@@ -1,0 +1,27 @@
+{
+  "name": "@infrix/cli",
+  "version": "0.1.0",
+  "description": "npx launcher for the Infrix CLI — downloads the prebuilt, checksum-verified `infrix` binary for your platform and runs it.",
+  "bin": {
+    "infrix": "index.js"
+  },
+  "files": [
+    "index.js",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "infrix",
+    "accumulate",
+    "cli",
+    "governance",
+    "blockchain"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/opendlt/infrix-cli.git"
+  }
+}
