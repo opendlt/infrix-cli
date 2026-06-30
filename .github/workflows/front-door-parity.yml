@@ -71,4 +71,4 @@ jobs:
           node v.mjs
 
   # TODO (after ADOPTION-01 node is live): submit a sandbox intent against
-  # https://devnet.infrix.io and assert a verifiable proof comes back.
+  # https://devnet.infrix.opendlt.org and assert a verifiable proof comes back.
