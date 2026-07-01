@@ -1,6 +1,6 @@
 {
   "name": "@infrix/cli",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "npx launcher for the Infrix CLI — downloads the prebuilt, checksum-verified `infrix` binary for your platform and runs it.",
   "bin": {
     "infrix": "index.js"
