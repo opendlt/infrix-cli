@@ -45,18 +45,31 @@ Targets: `linux_amd64`, `linux_arm64`, `darwin_amd64`, `darwin_arm64`, `windows_
 
 ## Verifying downloads
 
-Every release includes `infrix_<version>_checksums.txt` (SHA-256) and a
-cosign signature (`.sig` + `.pem`). The installers verify the checksum
-automatically and refuse to install on mismatch. To verify the checksums file
-signature yourself:
+Every release includes `infrix_<version>_checksums.txt` (SHA-256) and a detached
+**Ed25519 signature** over that checksums file
+(`infrix_<version>_checksums.txt.ed25519.sig`, base64), plus the release public
+key `RELEASE-SIGNING-KEY.pub` (`ed25519 <base64>`, fingerprint `d5c3c240…`).
+
+The one-line installers (`install.sh`, `install.ps1`) and the `npx @infrix/cli`
+wrapper now **authenticate the checksums file automatically**: they download the
+signature and verify it against a release public key **pinned inside the
+installer** (never fetched from the release endpoint) BEFORE trusting any hash in
+the checksums file, then verify the payload's SHA-256. Any of a missing,
+malformed, or invalid signature — or a checksum mismatch — makes every installer
+**refuse to install**. So a compromised endpoint that swaps both the payload and
+the checksums cannot forge a valid signature under the pinned key.
+
+To verify the checksums-file signature yourself (matches
+`infrix-core/scripts/verify-release-evidence.sh`, and the dist `VERIFY.md`):
 
 ```sh
-cosign verify-blob \
-  --certificate infrix_<version>_checksums.txt.pem \
-  --signature  infrix_<version>_checksums.txt.sig \
-  --certificate-identity-regexp 'github.com/opendlt' \
-  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  infrix_<version>_checksums.txt
+# Rebuild a PEM SubjectPublicKeyInfo for the raw Ed25519 key, decode the
+# base64 signature, then verify with OpenSSL 3.x.
+key=$(awk '{print $2}' RELEASE-SIGNING-KEY.pub)
+printf -- '-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA%s\n-----END PUBLIC KEY-----\n' "$key" > relkey.pem
+openssl base64 -d -in infrix_<version>_checksums.txt.ed25519.sig -out sig.bin
+openssl pkeyutl -verify -pubin -inkey relkey.pem -rawin \
+  -in infrix_<version>_checksums.txt -sigfile sig.bin
 ```
 
 ## No install needed to see the value

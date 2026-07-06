@@ -5,6 +5,9 @@
   "bin": {
     "infrix": "index.js"
   },
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
   "files": [
     "index.js",
     "README.md"

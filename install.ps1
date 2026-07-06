@@ -24,12 +24,37 @@ $ver = $tag.TrimStart('v')
 
 $archive = "infrix_${ver}_windows_${arch}.zip"
 $sums    = "infrix_${ver}_checksums.txt"
+$sig     = "infrix_${ver}_checksums.txt.ed25519.sig"
 $tmp = Join-Path $env:TEMP ("infrix-install-" + [guid]::NewGuid())
 New-Item -ItemType Directory -Path $tmp | Out-Null
 try {
   Write-Host "infrix-install: downloading $archive ($tag)"
   Invoke-WebRequest "$base/download/$tag/$archive" -OutFile (Join-Path $tmp $archive)
   Invoke-WebRequest "$base/download/$tag/$sums"    -OutFile (Join-Path $tmp $sums)
+  Invoke-WebRequest "$base/download/$tag/$sig"     -OutFile (Join-Path $tmp $sig)
+
+  # --- authenticate the checksums file BEFORE trusting any hash in it ---
+  # Pass-17 audit P0-1: verify the detached Ed25519 signature over the checksums
+  # against a PINNED release public key (embedded here, never fetched from the
+  # endpoint), using OpenSSL. Fail closed on any mismatch.
+  $openssl = (Get-Command openssl -ErrorAction SilentlyContinue)
+  if (-not $openssl) {
+    throw "openssl is required to authenticate the release checksums signature. Install OpenSSL (e.g. Git for Windows ships it) and re-run, or follow the manual steps in the dist VERIFY.md."
+  }
+  # Pinned Ed25519 release key (RELEASE-SIGNING-KEY.pub, fingerprint d5c3c240...).
+  $pinKeyB64 = 'KayNyxm3HuYpCkyi24G2rWXWiXJji0KktABtI2gDui8='
+  $pem = "-----BEGIN PUBLIC KEY-----`nMCowBQYDK2VwAyEA$pinKeyB64`n-----END PUBLIC KEY-----`n"
+  $pemPath = Join-Path $tmp 'relkey.pem'
+  [System.IO.File]::WriteAllText($pemPath, $pem)
+  # The signature ships base64-encoded; decode to the raw 64-byte signature.
+  $sigRaw = [System.Convert]::FromBase64String((Get-Content (Join-Path $tmp $sig) -Raw).Trim())
+  $sigBin = Join-Path $tmp 'sig.bin'
+  [System.IO.File]::WriteAllBytes($sigBin, $sigRaw)
+  & openssl pkeyutl -verify -pubin -inkey $pemPath -rawin -in (Join-Path $tmp $sums) -sigfile $sigBin *> $null
+  if ($LASTEXITCODE -ne 0) {
+    throw "checksums signature does NOT verify against the pinned release key - refusing to install (possible tampered release endpoint)"
+  }
+  Write-Host 'infrix-install: checksums signature verified against the pinned release key'
 
   $want = (Get-Content (Join-Path $tmp $sums) | Where-Object { $_ -match [regex]::Escape($archive) } |
            Select-Object -First 1).Split(' ')[0]
