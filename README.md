@@ -57,7 +57,10 @@ installer** (never fetched from the release endpoint) BEFORE trusting any hash i
 the checksums file, then verify the payload's SHA-256. Any of a missing,
 malformed, or invalid signature — or a checksum mismatch — makes every installer
 **refuse to install**. So a compromised endpoint that swaps both the payload and
-the checksums cannot forge a valid signature under the pinned key.
+the checksums cannot forge a valid signature under the pinned key. The Windows
+`install.ps1` verifies the Ed25519 signature with a **native pure-PowerShell
+verifier** (RFC 8032, `System.Numerics.BigInteger` + built-in SHA-512), so it is
+**dependency-free on a clean Windows host** — no OpenSSL required (pass-18 P2-4).
 
 To verify the checksums-file signature yourself (matches
 `infrix-core/scripts/verify-release-evidence.sh`, and the dist `VERIFY.md`):
