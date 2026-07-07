@@ -70,5 +70,30 @@ jobs:
           EOF
           node v.mjs
 
-  # TODO (after ADOPTION-01 node is live): submit a sandbox intent against
-  # https://devnet.infrix.opendlt.org and assert a verifiable proof comes back.
+  sandbox-intent:
+    name: sandbox intent -> verifiable proof (${{ matrix.os }})
+    # Pass-18 audit P2-5: prove the most important end-to-end developer path — a
+    # governed intent that produces a proof you can verify WITHOUT trusting the
+    # node. `infrix demo start --mode local` runs a DETERMINISTIC, fully-offline
+    # governed escrow flow (no live node needed), exports a portable proof, and
+    # self-verifies it; `infrix demo verify` re-verifies it independently. Every
+    # step fails the job on a non-zero exit, so the front door fails closed if the
+    # intent -> proof -> independent-verify path ever breaks.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: run a deterministic governed intent and export a proof
+        run: npx --yes @infrix/cli demo start --mode local --no-browser
+      - name: independently verify the exported proof (no node trust)
+        run: npx --yes @infrix/cli demo verify
+      - name: print the proof receipt
+        run: npx --yes @infrix/cli demo receipt
+      - name: stop the backgrounded demo server
+        if: always()
+        run: npx --yes @infrix/cli demo stop || true
