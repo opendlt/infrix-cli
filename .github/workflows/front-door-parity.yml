@@ -29,12 +29,16 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: ./install.ps1
-      - name: infrix version + doctor
+      - name: infrix version + doctor (offline, fail-closed)
         shell: bash
         run: |
           export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"
           infrix version
-          infrix doctor || true   # doctor may flag a missing node until ADOPTION-01 is live
+          # Pass-19 audit P1-2: no more `|| true` bypass. `doctor --offline` skips
+          # the live-node/L0 reachability checks a clean runner cannot satisfy, so a
+          # non-zero exit here means a REAL install break (missing binary, missing
+          # compiled-in command, bad bundled config) — the job now fails closed.
+          infrix doctor --offline
 
   npx-wrapper:
     name: npx @infrix/cli (${{ matrix.os }})
