@@ -88,11 +88,41 @@ function get(url) {
   });
 }
 
+// cachedBinaryIsAuthentic re-verifies a cached binary against the authenticated
+// sha256 persisted next to it at install time (pass-18 audit P2-3). Returns true
+// only when both files exist and the binary's current hash matches the stored,
+// signature-authenticated checksum — so a tampered or corrupted cache is never
+// trusted and triggers a fresh authenticated download.
+function cachedBinaryIsAuthentic(bin, sumPath) {
+  if (!fs.existsSync(bin) || !fs.existsSync(sumPath)) return false;
+  const want = fs.readFileSync(sumPath, 'utf8').trim().toLowerCase();
+  if (!want) return false;
+  const got = crypto.createHash('sha256').update(fs.readFileSync(bin)).digest('hex');
+  return want === got;
+}
+
 async function ensureBinary() {
   const { asset, ext } = target();
   const dir = path.join(os.homedir(), '.infrix', 'bin', VERSION);
   const bin = path.join(dir, 'infrix' + ext);
-  if (fs.existsSync(bin)) return bin;
+  // Pass-18 audit P2-3: the authenticated sha256 (extracted from the
+  // signature-verified checksums file) is persisted next to the binary at
+  // install time so every subsequent invocation can re-verify the CACHED binary
+  // before executing it — a cache tampered or corrupted after install is caught.
+  const sumPath = path.join(dir, 'infrix.sha256');
+
+  if (fs.existsSync(bin)) {
+    if (cachedBinaryIsAuthentic(bin, sumPath)) return bin; // cached binary still authentic
+    if (fs.existsSync(sumPath)) {
+      process.stderr.write('@infrix/cli: cached binary FAILED re-verification — deleting and redownloading\n');
+    } else {
+      // Legacy cache with no stored authenticated checksum: cannot re-verify, so
+      // never trust it — force a fresh signature-authenticated download.
+      process.stderr.write('@infrix/cli: cached binary has no authenticated checksum — redownloading\n');
+    }
+    try { fs.unlinkSync(bin); } catch (_) { /* best effort */ }
+    try { fs.unlinkSync(sumPath); } catch (_) { /* best effort */ }
+  }
 
   const base = `https://github.com/${REPO}/releases/download/${TAG}`;
   process.stderr.write(`@infrix/cli: fetching ${asset} (${TAG})\n`);
@@ -118,12 +148,15 @@ async function ensureBinary() {
 
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(bin, data, { mode: 0o755 });
+  // Persist the authenticated checksum so future invocations can re-verify the
+  // cached binary without re-downloading (pass-18 audit P2-3).
+  fs.writeFileSync(sumPath, want + '\n', { mode: 0o644 });
   return bin;
 }
 
 // Export the authentication primitives so a test can prove they fail closed on a
 // tampered/unsigned checksums file without any network I/O (pass-17 audit P0-1).
-module.exports = { verifyChecksumSignature, pinnedPublicKey, PINNED_ED25519_PUBKEY_B64 };
+module.exports = { verifyChecksumSignature, pinnedPublicKey, PINNED_ED25519_PUBKEY_B64, cachedBinaryIsAuthentic };
 
 // Only auto-download-and-exec when run directly (npx), not when required by a test.
 if (require.main === module) {
